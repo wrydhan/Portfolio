@@ -12,6 +12,9 @@ export type Project = {
   tags: string[];
   links: ProjectLink[];
   year?: string;
+  featured?: boolean;
+  internalHref?: string;
+  status?: "in-progress";
 };
 
 export type Experience = {
@@ -102,17 +105,56 @@ export const projects: Project[] = [
   {
     id: "proj-track-day",
     title: "Founders Track Day",
-    summary: "Track-day event series connecting car enthusiasts, founders, and investors.",
+    summary:
+      "A track-day series I founded for founders, investors, and car people — now a sponsored operation heading to Sonoma Raceway.",
     description:
-      "Founded and operate a track-day event series at the intersection of automotive culture and the startup community.",
+      "I run the whole thing myself: venue, budget, sponsors, and the day-of experience. Two events in, 100+ people through the gates, and a flagship at Sonoma Raceway on October 26, 2026.",
     details: [
-      "Hosted 2 events with 200+ total attendees so far.",
-      "Secured $30K in sponsorships from Rho and MongoDB for the next event — a $32K production at Sonoma Raceway scheduled for October 2026.",
-      "Own operations end to end: venue booking, sponsor outreach, budgeting, and on-site event management.",
+      "Grew from a single experimental meetup into a recurring, sponsored series in under a year.",
+      "Closed $30K in corporate sponsorship from Rho, MongoDB, and Warp against a ~$32K flagship budget.",
+      "Booked Sonoma Raceway for 400 expected attendees — the next chapter of a still-solo operation.",
     ],
-    tags: ["Events", "Sponsorships", "Operations", "Automotive"],
-    links: [],
+    tags: ["Entrepreneurship", "Sponsorships", "Event operations", "Automotive"],
+    links: [{ label: "Case study", href: "/founders-track-day" }],
     year: "2025 — Present",
+    featured: true,
+    internalHref: "/founders-track-day",
+  },
+  {
+    id: "proj-schedule-maker",
+    title: "Track Day Schedule Maker",
+    summary:
+      "The scheduling tool I actually use to run track days — sessions, run groups, and a PDF for the paddock.",
+    description:
+      "A Next.js app I built to stop assembling schedules by hand. Configure the day, drop in drivers, group them by skill, then drag people around until the grid feels right.",
+    details: [
+      "Generates a full day: tech inspection, driver meeting, sessions, breaks, and lunch before 2 PM.",
+      "Skill-based or random grouping, with drag-and-drop between and within run groups.",
+      "One-click PDF export of the schedule, groups, and day stats — built for printing, not just the screen.",
+    ],
+    tags: ["Next.js", "TypeScript", "Tailwind", "@dnd-kit", "jsPDF"],
+    links: [
+      { label: "Live app", href: "https://track-day-schedule-maker.vercel.app" },
+      { label: "GitHub", href: "https://github.com/wrydhan/TrackDayScheduleMaker" },
+    ],
+    year: "2025",
+  },
+  {
+    id: "proj-buildsheet",
+    title: "BuildSheet",
+    summary:
+      "A digital garage for car people — log the build, turn it into a swipeable magazine of spec sheets, share a public link.",
+    description:
+      "The app I'm building now. Add a car, log mods and maintenance, then generate poster-style sheets you can swipe through like a magazine. Built with Expo and Supabase; the MVP is feature-complete, with deploy and runtime bring-up still in progress.",
+    details: [
+      "Garage + build log for mods, service, and notes — then styled spec sheets generated from that data and photos.",
+      "Public share pages at /c/[slug] so anyone can view a garage without an account.",
+      "AI parsing and narration run server-side via Supabase Edge Functions. iOS, Android, and web from one Expo app.",
+    ],
+    tags: ["Expo", "React Native", "Supabase", "TypeScript", "In progress"],
+    links: [{ label: "GitHub", href: "https://github.com/wrydhan/BuildSheet" }],
+    year: "2026",
+    status: "in-progress",
   },
   {
     id: "proj-purefi-cli",
