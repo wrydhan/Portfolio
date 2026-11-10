@@ -197,15 +197,7 @@ def main() -> None:
             if not inside[r, c]:
                 continue
             d = int(dist[r, c])
-            spine = abs(c - cx + 0.5)
-            if spine <= 1.5:
-                chars[r, c], cols[r, c] = "\u2592", LIT
-            elif spine <= 5:
-                chars[r, c], cols[r, c] = "\u2593", LIT
-            elif d <= 2:
-                chars[r, c], cols[r, c] = "\u2593", PLATE_DK
-            else:
-                chars[r, c], cols[r, c] = "\u2593", PLATE
+            chars[r, c], cols[r, c] = " ", -1
 
     # wing surfaces: light the leading and trailing edges so the sweep reads
     for c in range(COLS):
@@ -258,9 +250,9 @@ def main() -> None:
             if y < 0.048:
                 put(r, c, "\u2588", WHITE)
             elif y < 0.082:
-                put(r, c, "\u2592", WHITE)
+                put(r, c, "\u2588", WHITE)
             else:
-                put(r, c, "\u2592", LIGHT)
+                put(r, c, "\u2588", LIGHT)
 
     # canopy
     cy0, cy1 = 0.156, 0.262
@@ -276,11 +268,11 @@ def main() -> None:
             if c in (c0, c1):
                 put(r, c, "\u2588", INK)
             elif y < cy0 + 0.024:
-                put(r, c, "\u2593", INK)
+                put(r, c, "\u2588", INK)
             elif y < cy0 + 0.055:
-                put(r, c, "\u2591", GLASS)
+                put(r, c, "\u2588", GLASS)
             else:
-                put(r, c, "\u2593", INK)
+                put(r, c, "\u2588", INK)
 
     # dorsal seam + panel lines
     for r in range(rows):
@@ -292,7 +284,7 @@ def main() -> None:
     for frac in (0.300, 0.392, 0.470, 0.620):
         r = int(frac / cell_h)
         for c in range(cx - 6, cx + 7):
-            if 0 <= r < rows and inside[r, c] and chars[r, c] in ("\u2593", "\u2592"):
+            if 0 <= r < rows and inside[r, c] and chars[r, c] in ("\u2588", "\u2588"):
                 chars[r, c], cols[r, c] = "\u00b7", LINE
 
     # twin canted fins: raised wedge, pale leading edge, ink outline
@@ -314,9 +306,9 @@ def main() -> None:
                 if c in (lo, hi):
                     put(r, c, "\u2588", INK)
                 elif y < FIN[1][1] and c == (lo + 1 if side > 0 else hi - 1):
-                    put(r, c, "\u2591", LIGHT)
+                    put(r, c, "\u2588", LIGHT)
                 else:
-                    put(r, c, "\u2593", PLATE)
+                    put(r, c, "\u2588", PLATE)
 
     # twin nozzles
     nr = int(NOZZLE_Y / cell_h)
@@ -329,9 +321,9 @@ def main() -> None:
                     continue
                 rad = (((r - nr) / R) ** 2 + ((c - ncx) / R) ** 2) ** 0.5
                 if rad < 0.38:
-                    put(r, c, "\u2593", INK)
+                    put(r, c, "\u2588", INK)
                 elif rad < 0.80:
-                    put(r, c, "\u2592", GLASS)
+                    put(r, c, "\u2588", GLASS)
                 elif rad < 1.04:
                     put(r, c, "\u2588", INK)
 
@@ -345,7 +337,7 @@ def main() -> None:
         ring = {(r + dr, c + dc) for (r, c) in star
                 for dr in (-1, 0, 1) for dc in (-1, 0, 1)} - star
         for (r, c) in sorted(ring):
-            put(r, c, "\u2591", WHITE)
+            put(r, c, "\u2588", WHITE)
         for (r, c) in sorted(star):
             put(r, c, "\u2588", RED)
 

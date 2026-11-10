@@ -11,7 +11,7 @@ export function Hero() {
           Fig. 01 <span className="text-ink">— Su-47 “Berkut”</span>
         </span>
         <span className="hidden text-center sm:block">
-          Static plot · symmetric planform mask · 136&times;110 cells
+          Static plot · one ink, no shading · 136&times;110 cells
         </span>
         <span className="text-right">{siteConfig.location}</span>
       </div>
