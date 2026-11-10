@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { siteConfig } from "@/data/resume";
-import { Su47Ascii } from "./Su47Ascii";
+import { Su47Static } from "./Su47Static";
 
 export function Hero() {
   return (
@@ -11,16 +11,16 @@ export function Hero() {
           Fig. 01 <span className="text-ink">— Su-47 “Berkut”</span>
         </span>
         <span className="hidden text-center sm:block">
-          ASCII turntable · 60 pre-rendered frames · 126&times;52 cells
+          Static plot · traced from a top-down photograph · 152&times;122 cells
         </span>
         <span className="text-right">{siteConfig.location}</span>
       </div>
 
       {/* the aircraft */}
       <div className="relative flex flex-1 items-center justify-center">
-        <Su47Ascii className="w-full max-w-[1360px]" />
+        <Su47Static className="w-full max-w-[1040px]" />
         <p className="sr-only">
-          An ASCII-art render of a Sukhoi Su-47 Berkut rotating on a turntable, drawn with
+          A coloured ASCII-art plot of a Sukhoi Su-47 Berkut seen from above, drawn with
           monospace characters.
         </p>
       </div>
