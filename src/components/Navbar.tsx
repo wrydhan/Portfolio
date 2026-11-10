@@ -6,49 +6,47 @@ import { useEffect, useState } from "react";
 import { siteConfig } from "@/data/resume";
 
 const navLinks = [
-  { label: "About", href: "/#about" },
-  { label: "Experience", href: "/#experience" },
-  { label: "Projects", href: "/#projects" },
-  { label: "Track Day", href: "/founders-track-day" },
-  { label: "Contact", href: "/#contact" },
+  { label: "About", href: "/#about", index: "01" },
+  { label: "Experience", href: "/#experience", index: "02" },
+  { label: "Work", href: "/#projects", index: "03" },
+  { label: "Track day", href: "/founders-track-day", index: "04" },
 ];
 
 export function Navbar() {
-  const [scrolled, setScrolled] = useState(false);
+  const [compact, setCompact] = useState(false);
   const pathname = usePathname();
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 40);
+    const onScroll = () => setCompact(window.scrollY > 24);
     onScroll();
-    window.addEventListener("scroll", onScroll);
+    window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   return (
     <header
-      className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${
-        scrolled ? "panel border-b py-3 shadow-lg shadow-black/20" : "bg-transparent py-5"
+      className={`fixed inset-x-0 top-0 z-50 transition-[background,backdrop-filter] duration-300 ${
+        compact ? "bg-paper/85 backdrop-blur-md" : "bg-transparent"
       }`}
     >
-      <nav className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6">
-        <Link
-          href="/"
-          className="font-display shrink-0 text-sm font-semibold tracking-wide text-white transition hover:text-accent"
-        >
-          {siteConfig.name}
+      <nav className="mx-auto flex max-w-[1440px] items-center justify-between gap-6 px-5 py-4 sm:px-8">
+        <Link href="/" className="label shrink-0 text-ink" aria-label="Home">
+          WR<span className="text-mute">·</span>
+          <span className="hidden sm:inline"> PORTFOLIO</span>
         </Link>
 
-        <ul className="hidden items-center gap-8 md:flex">
+        <ul className="hidden items-center gap-7 md:flex">
           {navLinks.map((link) => {
             const active = link.href === pathname;
             return (
               <li key={link.href}>
                 <Link
                   href={link.href}
-                  className={`text-sm transition-colors hover:text-accent ${
-                    active ? "text-accent" : "text-muted"
+                  className={`label transition-colors ${
+                    active ? "text-ink" : "text-mute hover:text-ink"
                   }`}
                 >
+                  <span className="mr-1.5 text-[9px]">{link.index}</span>
                   {link.label}
                 </Link>
               </li>
@@ -56,21 +54,13 @@ export function Navbar() {
           })}
         </ul>
 
-        <div className="ml-auto flex items-center gap-3">
-          <Link
-            href="/founders-track-day"
-            className={`text-sm transition hover:text-accent md:hidden ${
-              pathname === "/founders-track-day" ? "text-accent" : "text-muted"
-            }`}
+        <div className="flex items-center gap-2">
+          <a
+            href={`mailto:${siteConfig.email}`}
+            className="pill pill-ink label text-[10px] transition-opacity"
           >
-            Track Day
-          </Link>
-          <Link
-            href="/#contact"
-            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-background transition hover:bg-accent-dim"
-          >
-            Contact
-          </Link>
+            {siteConfig.email}
+          </a>
         </div>
       </nav>
     </header>

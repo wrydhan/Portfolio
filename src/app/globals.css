@@ -1,40 +1,142 @@
 @import "tailwindcss";
 
-@theme inline {
-  --color-background: #0f1419;
-  --color-surface: #1a222d;
-  --color-surface-hover: #222c3a;
-  --color-border: #2a3544;
-  --color-foreground: #f1f5f9;
-  --color-muted: #94a3b8;
-  --color-accent: #e8b923;
-  --color-accent-dim: #b8921a;
-  --color-blue: #4a7cff;
-  --font-display: var(--font-space-grotesk);
-  --font-sans: var(--font-inter);
+@theme {
+  --color-paper: #ffffff;
+  --color-ink: #000000;
+  --color-fill: #f1f1f1;
+  --color-fill-deep: #e8e8e8;
+  --color-mute: rgba(0, 0, 0, 0.4);
+
+  --font-display: var(--font-instrument-serif), "Times New Roman", serif;
+  --font-sans: var(--font-instrument-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-fragment-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  --radius-card: 15px;
+  --radius-control: 8px;
 }
 
 html {
   scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body {
-  background: var(--color-background);
-  color: var(--color-foreground);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  letter-spacing: -0.02em;
+  font-feature-settings: "ss01" 1;
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--color-accent) 35%, transparent);
-  color: white;
+  background: #000;
+  color: #fff;
 }
 
-.panel {
-  background: color-mix(in srgb, var(--color-surface) 85%, transparent);
-  border: 1px solid var(--color-border);
-  backdrop-filter: blur(12px);
+:focus-visible {
+  outline: 2px solid #000;
+  outline-offset: 3px;
+  border-radius: 2px;
 }
 
-.accent-bar {
-  background: linear-gradient(90deg, var(--color-accent), transparent);
+/* Law 2: the serif is set solid and stroked in ink. */
+.display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  line-height: 0.95;
+  letter-spacing: 0;
+  -webkit-text-stroke: 0.05em currentColor;
+}
+
+/* Law 3: sans and mono carry negative tracking. */
+.label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  letter-spacing: -0.04em;
+}
+
+.prose-tight p {
+  text-wrap: pretty;
+}
+
+/* The ASCII stage: exact monospace metrics matter more than anything else here. */
+.ascii {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1;
+  white-space: pre;
+  font-variant-ligatures: none;
+  font-feature-settings: "calt" 0, "liga" 0;
+  word-break: normal;
+  overflow-wrap: normal;
+  color: var(--color-ink);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  border-radius: 100px;
+  padding: 0.35rem 0.85rem;
+  background: var(--color-fill);
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+
+.pill-ink {
+  background: #000;
+  color: #fff;
+}
+
+.pill-ink:hover {
+  background: #000;
+  color: #fff;
+  opacity: 0.82;
+}
+
+.tint {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 620ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 620ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.reveal[data-shown="true"] {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

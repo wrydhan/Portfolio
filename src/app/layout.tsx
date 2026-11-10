@@ -1,23 +1,37 @@
 import type { Metadata } from "next";
-import { Inter, Space_Grotesk } from "next/font/google";
+import { Fragment_Mono, Instrument_Sans, Instrument_Serif } from "next/font/google";
 import { about, siteConfig } from "@/data/resume";
 import "./globals.css";
 
-const spaceGrotesk = Space_Grotesk({
+const instrumentSerif = Instrument_Serif({
   subsets: ["latin"],
-  variable: "--font-space-grotesk",
+  weight: "400",
+  style: ["normal", "italic"],
+  variable: "--font-instrument-serif",
   display: "swap",
 });
 
-const inter = Inter({
+const instrumentSans = Instrument_Sans({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-instrument-sans",
+  display: "swap",
+});
+
+const fragmentMono = Fragment_Mono({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-fragment-mono",
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: `${siteConfig.name} | ${siteConfig.title}`,
-  description: `${siteConfig.name} — ${siteConfig.title}. ${about.summary.slice(0, 140)}`,
+  title: `${siteConfig.name} — ${siteConfig.title}`,
+  description: `${siteConfig.name}. ${about.summary.slice(0, 150)}`,
+  openGraph: {
+    title: `${siteConfig.name} — ${siteConfig.title}`,
+    description: about.summary.slice(0, 150),
+    type: "website",
+  },
 };
 
 export default function RootLayout({
@@ -26,8 +40,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${spaceGrotesk.variable} ${inter.variable}`}>
-      <body className="antialiased">{children}</body>
+    <html
+      lang="en"
+      className={`${instrumentSerif.variable} ${instrumentSans.variable} ${fragmentMono.variable}`}
+    >
+      <body className="bg-paper text-ink antialiased">{children}</body>
     </html>
   );
 }
