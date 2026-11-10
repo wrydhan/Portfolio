@@ -44,7 +44,16 @@ export default function RootLayout({
       lang="en"
       className={`${instrumentSerif.variable} ${instrumentSans.variable} ${fragmentMono.variable}`}
     >
-      <body className="bg-paper text-ink antialiased">{children}</body>
+      <body className="bg-paper text-ink antialiased">
+        <script
+          // Runs before the overlay is parsed, so a repeat visit never flashes it.
+          dangerouslySetInnerHTML={{
+            __html:
+              'try{if(sessionStorage.getItem("wr:intro:v1")){document.documentElement.setAttribute("data-intro","seen")}}catch(e){}',
+          }}
+        />
+        {children}
+      </body>
     </html>
   );
 }
