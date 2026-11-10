@@ -1,187 +1,62 @@
 /**
  * The drift intro, drawn as characters.
  *
- * Everything here is pure and deterministic: the same segment geometry, the same
- * seeded puff of tyre smoke, the same frame for a given index. The component only
- * steps an index through `buildFrames()` — no canvas, no image, no 3D.
+ * Pure and deterministic: the same geometry, the same seeded smoke, the same
+ * frame for a given index. Nothing is fetched, decoded or drawn to a canvas —
+ * the player just swaps a string on a <pre>.
  *
- * Art direction: one ink, flat. The car is a solid silhouette with the glass and
- * the wheel arches cut out of it; the smoke is the only place characters thin out.
+ * The shot: the camera is planted low behind a tyre wall, looking down the
+ * outside of a corner. A white SW20 comes through it small and far, grows as it
+ * closes, throws the back end at the barrier, kisses it with the near rear tyre
+ * filling the frame — and then carries straight on past the camera and off the
+ * right edge. Only after it is gone does the picture cut to ink.
+ *
+ * Art direction: one flat ink. The car is a single mass with the glass, arches
+ * and panel details knocked out; the barrier is structure, not shading; the
+ * smoke is the only thing that thins, because that is what characters do well.
  */
 
-export const COLS = 94;
-export const ROWS = 22;
-export const SPRITE_W = 56;
-export const SPRITE_H = 11;
+export type Frame = string[];
+export type SceneConfig = { cols: number; rows: number };
+export type Pose = { scale: number; x: number; base: number; roll: number };
 
-/** The row the tyres rest on. Smoke rises above it. */
-const GROUND_ROW = 17;
-/** Where the car comes to rest, in stage columns. */
-const PARK_X = 19;
-/** Frames in the animation, at 30fps. */
-export const FRAME_COUNT = 72;
+/** width / height of one character cell. */
+export const CELL_ASPECT = 0.6;
+/** SW20 length over roof height, in the same units, gives the sprite its box. */
+const CAR_ASPECT = 3.32;
 
-type Grid = string[][];
+/** The sprite box in millimetres: a 4.48 m long slab, 1.35 m tall. */
+const MM_W = 4480;
+const MM_H = 1348;
+
+/** Rows of scene below the track: the barrier the camera is parked behind. */
+const BARRIER_ROWS = 5;
+
 type Pt = [number, number];
 
 const PRIORITY: Record<string, number> = {
   "#": 9,
-  "@": 7,
-  "*": 6,
-  "+": 5,
-  "=": 4,
-  ":": 3,
-  "-": 2,
-  ".": 1,
+  "@": 8,
+  "*": 7,
+  "+": 6,
+  "=": 5,
+  ":": 4,
+  "-": 3,
+  ".": 2,
 };
 
-function blank(w: number, h: number): Grid {
-  return Array.from({ length: h }, () => Array<string>(w).fill(" "));
-}
+/* ------------------------------------------------------------------ shapes */
 
-function inPoly(x: number, y: number, poly: Pt[]): boolean {
+function inPoly(px: number, py: number, poly: Pt[]): boolean {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
     const [xi, yi] = poly[i];
     const [xj, yj] = poly[j];
-    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+    if (yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) {
       inside = !inside;
     }
   }
   return inside;
-}
-
-function fillPoly(g: Grid, poly: Pt[], ch = "#") {
-  for (let y = 0; y < g.length; y++) {
-    for (let x = 0; x < g[0].length; x++) {
-      if (inPoly(x + 0.5, y + 0.5, poly)) g[y][x] = ch;
-    }
-  }
-}
-
-function ellipse(
-  g: Grid,
-  cx: number,
-  cy: number,
-  rx: number,
-  ry: number,
-  ch: string,
-) {
-  for (let y = 0; y < g.length; y++) {
-    for (let x = 0; x < g[0].length; x++) {
-      const dx = (x + 0.5 - cx) / rx;
-      const dy = (y + 0.5 - cy) / ry;
-      if (dx * dx + dy * dy <= 1) g[y][x] = ch;
-    }
-  }
-}
-
-/**
- * A rear-drive coupe in side profile, facing right, drawn in character cells.
- * Character cells are taller than they are wide, which is why the wheels are wide
- * ellipses rather than circles.
- */
-function buildSprite(): string[] {
-  const g = blank(SPRITE_W, SPRITE_H);
-  const rearAxle = 15.2;
-  const frontAxle = 44.6;
-  const axleY = 7.9;
-
-  // Greenhouse: roof, A and C pillars as one mass; the glass is cut out after.
-  fillPoly(g, [
-    [13.6, 4.4],
-    [18.4, 0.9],
-    [31.0, 0.6],
-    [38.6, 4.2],
-  ]);
-
-  // Body: rear deck, sills, raked nose.
-  fillPoly(g, [
-    [2.0, 4.4],
-    [20.0, 4.2],
-    [34.0, 4.1],
-    [44.0, 4.3],
-    [51.5, 4.9],
-    [55.4, 5.7],
-    [55.9, 6.9],
-    [54.4, 7.6],
-    [50.0, 7.8],
-    [36.0, 7.8],
-    [20.0, 7.8],
-    [6.0, 7.7],
-    [2.6, 7.2],
-    [2.0, 6.0],
-  ]);
-
-  // Rear wing: blade and its upright. Two flat strokes that read at 11 rows.
-  fillPoly(g, [
-    [1.2, 2.7],
-    [8.0, 2.7],
-    [8.0, 3.4],
-    [1.2, 3.4],
-  ]);
-  fillPoly(g, [
-    [6.0, 3.4],
-    [7.6, 3.4],
-    [7.6, 4.6],
-    [6.0, 4.6],
-  ]);
-
-  // Glass, split by a B-pillar.
-  fillPoly(
-    g,
-    [
-      [15.6, 4.2],
-      [19.4, 1.9],
-      [30.2, 1.7],
-      [36.8, 4.1],
-    ],
-    " ",
-  );
-  fillPoly(
-    g,
-    [
-      [26.4, 1.8],
-      [27.8, 1.8],
-      [27.8, 4.2],
-      [26.4, 4.2],
-    ],
-  );
-
-  // Wheel arches and tyres: the arch is cut wider than the tyre so the wheel
-  // separates from the body instead of merging into it.
-  for (const cx of [rearAxle, frontAxle]) {
-    ellipse(g, cx, axleY - 0.5, 5.4, 2.9, " ");
-    ellipse(g, cx, axleY, 4.2, 2.15, "#");
-    ellipse(g, cx, axleY, 2.0, 1.0, " ");
-  }
-
-  return g.map((row) => row.join("").replace(/\s+$/, ""));
-}
-
-const SPRITE = buildSprite();
-
-function put(g: Grid, x: number, y: number, ch: string) {
-  const px = Math.round(x);
-  const py = Math.round(y);
-  if (py < 0 || py >= g.length || px < 0 || px >= g[0].length) return;
-  const cur = g[py][px];
-  if ((PRIORITY[ch] ?? 0) >= (PRIORITY[cur] ?? 0)) g[py][px] = ch;
-}
-
-/** Vertical shear that reads as body roll: pivot at the car's centre. */
-function blit(g: Grid, x: number, yBottom: number, roll: number) {
-  const cx = SPRITE_W / 2;
-  const tan = Math.tan(roll);
-  for (let sy = 0; sy < SPRITE.length; sy++) {
-    const row = SPRITE[sy];
-    for (let sx = 0; sx < row.length; sx++) {
-      const ch = row[sx];
-      if (ch === " ") continue;
-      const dy = -tan * (sx - cx);
-      put(g, x + sx, yBottom - (SPRITE_H - 1 - sy) + dy, ch);
-    }
-  }
 }
 
 function rng(seed: number) {
@@ -195,88 +70,390 @@ function rng(seed: number) {
   };
 }
 
-type Puff = { x: number; y: number; vx: number; vy: number; age: number; life: number; ch: string };
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/* -------------------------------------------------------------------- car */
+/**
+ * The car is drafted in a fixed 88 × 16 cell box (88 * 0.6 / 16 = 3.3, the SW20's
+ * 4.17 m over 1.26 m) and rasterised from there at whatever size the shot asks
+ * for, so a distant frame and the frame where the tyre fills the screen come out
+ * of the same geometry.
+ *
+ * Drafted from the car's real measurements: 4.17 m long, 1.24 m to the roof,
+ * 2.4 m between the axles, 0.30 m to the centre of each wheel.
+ */
+const DW = 88;
+const DH = 16;
+
+/** Silhouette top edge, tail to nose, in design rows. */
+const TOP: Pt[] = [
+  [3.0, 6.60], [7.0, 6.30], [13.0, 6.16], [17.0, 6.10], [19.4, 6.05],
+  [26.4, 1.55], [29.6, 1.26], [41.8, 1.26], [43.4, 1.62], [54.6, 6.05],
+  [61.0, 6.55], [70.0, 7.15], [79.0, 7.75], [84.5, 8.15], [85.5, 8.55],
+];
+/** Underbody, tail to nose. */
+const BOT: Pt[] = [
+  [3.0, 13.90], [9.0, 13.70], [13.0, 14.00], [38.0, 14.00], [56.0, 14.00],
+  [62.0, 13.90], [76.0, 13.60], [83.0, 13.30], [85.5, 13.00],
+];
+
+const AXLE_Y = 12.44;
+const WHEEL_R = 3.35;
+const ARCH_R = 4.30;
+const RIM_R = 2.43;
+const AXLE_REAR = 21.7;
+const AXLE_FRONT = 69.2;
+
+/** Side glass, the intake ahead of the rear arch, the livery band, the lamps. */
+const SIDE_GLASS: Pt[] = [[20.4, 5.95], [29.8, 2.20], [41.2, 2.18], [52.6, 5.86]];
+const C_PILLAR: Pt[] = [[25.6, 6.10], [28.4, 2.05], [29.6, 2.05], [28.2, 6.08]];
+const A_PILLAR: Pt[] = [[41.0, 2.10], [43.4, 2.20], [53.4, 5.88], [51.6, 6.02]];
+const B_PILLAR: Pt[] = [[34.8, 2.02], [36.8, 2.02], [37.2, 5.96], [35.2, 5.96]];
+const INTAKE: Pt[] = [[22.4, 7.40], [29.6, 7.70], [29.8, 9.40], [22.6, 9.10]];
+const DECAL: Pt[] = [[31.0, 11.50], [56.0, 11.15], [56.0, 12.05], [31.0, 12.40]];
+const LAMPS: Pt[] = [[4.2, 6.90], [9.2, 6.95], [9.2, 7.85], [4.2, 7.80]];
+const DIFFUSER: Pt[] = [[5.4, 12.90], [14.2, 12.70], [14.2, 13.50], [5.4, 13.70]];
+const SPLITTER: Pt[] = [[80.0, 12.40], [87.0, 12.20], [87.0, 13.10], [80.0, 13.20]];
+
+/** GT wing: upper plane, lower plane, two struts onto the engine deck. */
+const WING: Pt[][] = [
+  [[0.8, 1.55], [9.6, 1.95], [9.6, 2.55], [0.6, 2.15]],
+  [[1.6, 2.85], [10.4, 3.25], [10.4, 3.70], [1.4, 3.30]],
+  [[4.4, 2.35], [6.2, 2.55], [6.4, 6.40], [4.6, 6.40]],
+  [[7.6, 3.25], [9.4, 3.45], [9.6, 6.40], [7.8, 6.40]],
+];
+
+export type Sprite = { w: number; h: number; ink: Uint8Array };
+
+const spriteCache = new Map<number, Sprite>();
+
+/** Linear read of one of the silhouette polylines at design column x. */
+function edgeAt(edge: Pt[], x: number): number {
+  if (x <= edge[0][0]) return edge[0][1];
+  for (let i = 1; i < edge.length; i++) {
+    const [x0, y0] = edge[i - 1];
+    const [x1, y1] = edge[i];
+    if (x <= x1) {
+      const k = x1 === x0 ? 0 : (x - x0) / (x1 - x0);
+      return y0 + (y1 - y0) * clamp(k, 0, 1);
+    }
+  }
+  return edge[edge.length - 1][1];
+}
+
+/**
+ * Rasterise the car at a given sprite width in cells. Cached by width: the shot
+ * asks for a handful of sizes, not one per frame.
+ */
+export function sprite(wCells: number): Sprite {
+  const w = Math.max(16, Math.round(wCells));
+  const cached = spriteCache.get(w);
+  if (cached) return cached;
+
+  const h = Math.max(6, Math.round((w * CELL_ASPECT) / (DW * 0.6) * (DH / 1) * 1));
+  const hh = Math.max(6, Math.round((w / DW) * DH));
+  const rows = hh;
+  void h;
+
+  const ink = new Uint8Array(w * rows);
+  const px = (x: number) => ((x + 0.5) / w) * DW; // cell -> design column
+  const py = (y: number) => ((y + 0.5) / rows) * DH; // cell -> design row
+  const at = (x: number, y: number) => y * w + x;
+
+  // Silhouette: fill between the top edge and the underbody, column by column.
+  for (let x = 0; x < w; x++) {
+    const cx = px(x);
+    const t = edgeAt(TOP, cx);
+    const b = edgeAt(BOT, cx);
+    for (let y = 0; y < rows; y++) {
+      const cy = py(y);
+      if (cy >= t && cy <= b) ink[at(x, y)] = 1;
+    }
+  }
+
+  const poly = (p: Pt[], on: boolean) => {
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < w; x++) {
+        if (inPoly(px(x), py(y), p)) ink[at(x, y)] = on ? 1 : 0;
+      }
+    }
+  };
+
+  const disc = (cu: number, cv: number, r: number, on: boolean) => {
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < w; x++) {
+        const du = (px(x) - cu) / (r / CELL_ASPECT);
+        const dv = py(y) - cv;
+        if (du * du + dv * dv <= r * r) ink[at(x, y)] = on ? 1 : 0;
+      }
+    }
+  };
+
+  const fine = w >= 44;
+
+  // Cut: arches, glasshouse, intake, lamps, diffuser. Details only survive at
+  // sizes where there is a cell to hold them.
+  disc(AXLE_REAR, AXLE_Y, ARCH_R, false);
+  disc(AXLE_FRONT, AXLE_Y, ARCH_R, false);
+  poly(SIDE_GLASS, false);
+  poly(C_PILLAR, true);
+  poly(A_PILLAR, true);
+  poly(B_PILLAR, true);
+  if (fine) {
+    poly(INTAKE, false);
+    poly(DECAL, false);
+    poly(LAMPS, false);
+    poly(DIFFUSER, false);
+    poly(SPLITTER, true);
+    // bonnet vent strip, following the hood line
+    for (let x = 0; x < w; x++) {
+      const cx = px(x);
+      if (cx < 66 || cx > DW * 0.94) continue;
+      const t = edgeAt(TOP, cx);
+      for (let y = 0; y < rows; y++) {
+        const cy = py(y);
+        if (cy >= t + 0.15 && cy <= t + 0.95) ink[at(x, y)] = 0;
+      }
+    }
+    // door shut line
+    const door = Math.round((58 / DW) * w);
+    for (let y = 0; y < rows; y++) if (py(y) > 7.2) ink[at(door, y)] = 0;
+  }
+  WING.forEach((p) => poly(p, true));
+
+  // Wheels last, inside the arch cut-outs. The driven rear wheel is spinning,
+  // so it is a solid slotted disc; the front shows its spokes.
+  wheel(ink, w, rows, AXLE_REAR, "blur", px, py, at);
+  wheel(ink, w, rows, AXLE_FRONT, fine ? 6 : 4, px, py, at, "spoke");
+
+  const out = { w, h: rows, ink };
+  spriteCache.set(w, out);
+  return out;
+}
+
+function wheel(
+  ink: Uint8Array,
+  w: number,
+  rows: number,
+  cu: number,
+  spokes: number | "blur",
+  px: (x: number) => number,
+  py: (y: number) => number,
+  at: (x: number, y: number) => number,
+  style: "spoke" | "blur" = "spoke",
+) {
+  // Tyre
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < w; x++) {
+      const du = (px(x) - cu) / (WHEEL_R / CELL_ASPECT);
+      const dv = py(y) - AXLE_Y;
+      if (du * du + dv * dv <= WHEEL_R * WHEEL_R) ink[at(x, y)] = 1;
+    }
+  }
+  // Rim face knocked back out
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < w; x++) {
+      const du = (px(x) - cu) / (RIM_R / CELL_ASPECT);
+      const dv = py(y) - AXLE_Y;
+      if (du * du + dv * dv <= RIM_R * RIM_R) ink[at(x, y)] = 0;
+    }
+  }
+
+  if (style === "blur" || typeof spokes !== "number") {
+    // Spinning hard: two bladed strokes through the rim instead of spokes.
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < w; x++) {
+        const ax = (px(x) - cu) * CELL_ASPECT;
+        const ay = py(y) - AXLE_Y;
+        const r = Math.hypot(ax, ay);
+        if (r > RIM_R || r < RIM_R * 0.28) continue;
+        if (Math.abs(ay) < 0.55) ink[at(x, y)] = 1;
+      }
+    }
+    return;
+  }
+
+  const n = spokes;
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < w; x++) {
+      const ax = (px(x) - cu) * CELL_ASPECT;
+      const ay = py(y) - AXLE_Y;
+      const r = Math.hypot(ax, ay);
+      if (r > RIM_R || r < RIM_R * 0.26) continue;
+      const a = (Math.atan2(ay, ax) / (Math.PI * 2)) * n;
+      if (Math.abs(a - Math.round(a)) < 0.17) ink[at(x, y)] = 1;
+    }
+  }
+}
+
+/** The sprite as text rows. */
+export function spriteRows(wCells: number): string[] {
+  const s = sprite(wCells);
+  const out: string[] = [];
+  for (let y = 0; y < s.h; y++) {
+    let row = "";
+    for (let x = 0; x < s.w; x++) row += s.ink[y * s.w + x] ? "#" : " ";
+    out.push(row);
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ scene */
+
+type Grid = string[][];
+
+function blank(w: number, h: number): Grid {
+  return Array.from({ length: h }, () => Array<string>(w).fill(" "));
+}
+
+function put(g: Grid, x: number, y: number, ch: string) {
+  const px = Math.round(x);
+  const py = Math.round(y);
+  if (py < 0 || py >= g.length || px < 0 || px >= g[0].length) return;
+  if ((PRIORITY[ch] ?? 0) >= (PRIORITY[g[py][px]] ?? 0)) g[py][px] = ch;
+}
+
+/**
+ * The tyre wall the camera is standing behind: staggered stacks of tyres, an
+ * ad panel band along the top, and the line of the barrier itself.
+ */
+function drawBarrier(g: Grid, rows: number, cols: number) {
+  const top = rows - BARRIER_ROWS;
+  for (let x = 0; x < cols; x++) {
+    if (top >= 0) {
+      // top edge of the wall
+      g[top][x] = "-";
+      // ad panel: stencilled blocks, knocked out of the band
+      if (top + 1 < rows) g[top + 1][x] = x % 7 === 3 || x % 7 === 4 ? " " : "=";
+    }
+    // two staggered courses of tyres
+    if (top + 2 < rows) g[top + 2][x] = x % 3 === 0 ? "(" : x % 3 === 1 ? "O" : ")";
+    if (top + 3 < rows) g[top + 3][x] = x % 3 === 0 ? ")" : x % 3 === 1 ? "O" : "(";
+    if (top + 4 < rows) g[top + 4][x] = x % 2 === 0 ? "#" : "=";
+  }
+}
+
+function blit(g: Grid, rows: string[], x0: number, yBottom: number, roll: number) {
+  const h = rows.length;
+  const w = rows[0]?.length ?? 0;
+  const tan = Math.tan(roll);
+  const pivot = w / 2;
+  for (let sy = 0; sy < h; sy++) {
+    const row = rows[sy];
+    const yBase = yBottom - (h - 1 - sy);
+    for (let sx = 0; sx < w; sx++) {
+      if (row[sx] !== "#") continue;
+      const dy = -tan * (sx - pivot);
+      put(g, x0 + sx, yBase + dy, "#");
+    }
+  }
+}
+
+type Puff = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  age: number;
+  life: number;
+  ch: string;
+  size: number;
+};
 
 function smokeGlyph(a: number): string {
-  if (a < 0.16) return "@";
-  if (a < 0.34) return "*";
-  if (a < 0.56) return "+";
-  if (a < 0.78) return ":";
+  if (a < 0.18) return "@";
+  if (a < 0.36) return "*";
+  if (a < 0.55) return "+";
+  if (a < 0.76) return ":";
   return ".";
 }
 
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-const easeOutQuart = (u: number) => 1 - Math.pow(1 - u, 4);
+/* -------------------------------------------------------------- choreography */
 
-/** The car's column at progress `u` through the slide (0 = off stage, 1 = parked). */
-function carX(u: number) {
-  return -SPRITE_W + 2 + (PARK_X + SPRITE_W - 2) * easeOutQuart(u);
+type Key = { t: number; scale: number; x: number; base: number; roll: number };
+
+/**
+ * The camera path, as keys over the drift. `scale` is the sprite width in cells,
+ * `x` the sprite's left edge, `base` the row the tyres sit on (relative to the
+ * top of the barrier), `roll` the body's lean into the slide.
+ */
+const KEYS: Key[] = [
+  { t: 0.0, scale: 26, x: 0.26, base: -7.5, roll: 0.2 },
+  { t: 0.14, scale: 30, x: 0.3, base: -6.6, roll: 0.18 },
+  { t: 0.32, scale: 44, x: 0.36, base: -5.0, roll: 0.15 },
+  { t: 0.48, scale: 66, x: 0.42, base: -3.4, roll: 0.12 },
+  { t: 0.62, scale: 108, x: 0.44, base: -1.6, roll: 0.08 },
+  { t: 0.72, scale: 176, x: 0.34, base: 0.4, roll: 0.04 },
+  { t: 0.8, scale: 300, x: -0.34, base: 2.4, roll: 0.0 },
+  { t: 0.87, scale: 360, x: 0.6, base: 2.0, roll: -0.04 },
+  { t: 0.94, scale: 360, x: 2.0, base: 1.4, roll: -0.04 },
+  { t: 1.0, scale: 360, x: 3.2, base: 1.0, roll: -0.04 },
+];
+
+/** Frames of drift, and frames of black at the end. */
+const DRIFT_FRAMES = 62;
+const BLACK_FRAMES = 3;
+export const FRAME_COUNT = DRIFT_FRAMES + BLACK_FRAMES;
+export const FPS = 30;
+
+const ease = (u: number) => u * u * (3 - 2 * u);
+
+function poseAt(t: number, cfg: SceneConfig): Pose {
+  let a = KEYS[0];
+  let b = KEYS[KEYS.length - 1];
+  for (let i = 1; i < KEYS.length; i++) {
+    if (t <= KEYS[i].t) {
+      a = KEYS[i - 1];
+      b = KEYS[i];
+      break;
+    }
+  }
+  const span = b.t - a.t || 1;
+  const k = ease(clamp((t - a.t) / span, 0, 1));
+  const barriers = cfg.rows - BARRIER_ROWS;
+  return {
+    scale: Math.round(a.scale + (b.scale - a.scale) * k),
+    x: (a.x + (b.x - a.x) * k) * cfg.cols,
+    base: barriers + (a.base + (b.base - a.base) * k),
+    roll: a.roll + (b.roll - a.roll) * k,
+  };
 }
 
-export type Frame = string[];
-
-export const ARRIVE_AT = 0.7;
-
-/** The parked car: what the hero renders, and what the intro ends on. */
-export function staticFrame(): Frame {
-  const g = blank(COLS, ROWS);
-  blit(g, PARK_X, GROUND_ROW, 0);
-  return g.map((row) => row.join("").replace(/\s+$/, ""));
+/** Where the tyres touch the road, in cells — the smoke's source. */
+function contact(pose: Pose) {
+  return { x: pose.x + 0.228 * pose.scale, y: pose.base - 0.05 * pose.scale };
 }
 
-/** All frames of the drift, in order. Pure: cheap enough to build on mount. */
-export function buildFrames(count = FRAME_COUNT): Frame[] {
+export function buildFrames(cfg: SceneConfig): Frame[] {
+  const { cols, rows } = cfg;
   const frames: Frame[] = [];
   const puffs: Puff[] = [];
-  const rand = rng(0x51c7);
-  const scuffs = Array.from({ length: 18 }, () => ({
-    x: -1,
-    age: 0,
-    life: 26 + Math.round(rand() * 18),
-  }));
+  const rand = rng(0x5a20);
+  let prev = poseAt(0, cfg);
 
-  const step = 1 / 30;
-  let prevX = carX(0);
+  for (let f = 0; f < DRIFT_FRAMES; f++) {
+    const t = f / (DRIFT_FRAMES - 1);
+    const pose = poseAt(t, cfg);
+    const speed = Math.abs(pose.x - prev.x) + Math.abs(pose.scale - prev.scale) * 0.9;
+    const settled = speed < 0.6;
 
-  for (let f = 0; f < count; f++) {
-    const t = f / (count - 1);
-    const u = clamp(t / ARRIVE_AT, 0, 1);
-    const x = carX(u);
-    const v = x - prevX; // columns per frame
-    prevX = x;
+    const g = blank(cols, rows);
+    const c = contact(pose);
 
-    const g = blank(COLS, ROWS);
-    const roll = 0.055 * (1 - u) * (1 - u) + 0.012 * Math.sin(t * 9) * (1 - u);
-    const bob = Math.sin(t * 41) * 0.22 * (1 - u);
-
-    // Ground scuff: the tyre leaves marks on the road that scroll away with it.
-    if (v > 0.25) {
-      for (const mark of scuffs) {
-        mark.age += 1;
-        mark.x -= v * 0.9;
-        if (mark.age > mark.life) {
-          mark.life = 26 + Math.round(rand() * 18);
-          mark.age = 0;
-          mark.x = x + 15 + rand() * 2;
-        }
-        if (mark.x < -1 || mark.age > mark.life) continue;
-        put(g, mark.x, GROUND_ROW, mark.age < 6 ? "=" : "-");
-      }
-    }
-
-    // Tyre smoke off the driven wheel.
-    if (v > 0.3) {
-      const n = clamp(Math.round(v * 1.4), 2, 3);
-      const wx = x + 15.2;
+    // Smoke off the driven tyre: heavier the faster it is coming, and it keeps
+    // pouring as the car goes past the lens.
+    if (speed > 0.3) {
+      const n = clamp(Math.round(speed * 0.55), 1, 4);
       for (let i = 0; i < n; i++) {
         puffs.push({
-          x: wx - 1 + rand() * 2,
-          y: GROUND_ROW - 0.8 - rand() * 1.2,
-          vx: -v * 0.28 - rand() * 0.7,
-          vy: -0.30 - rand() * 0.7,
+          x: c.x - pose.scale * 0.06 + rand() * 2,
+          y: c.y - rand() * 1.5,
+          vx: -0.7 - rand() * 1.5,
+          vy: -0.25 - rand() * 0.7,
           age: 0,
-          life: 13 + Math.round(rand() * 8),
+          life: 16 + Math.round(rand() * 12),
           ch: "@",
+          size: pose.scale / 108,
         });
       }
     }
@@ -289,21 +466,42 @@ export function buildFrames(count = FRAME_COUNT): Frame[] {
         continue;
       }
       const a = p.age / p.life;
-      p.x += p.vx * (1 - a * 0.7) + Math.sin(p.age * 0.9 + p.y) * 0.35;
+      p.x += p.vx * (1 - a * 0.6) + Math.sin(p.age * 0.8 + p.y * 0.3) * 0.3;
       p.y += p.vy * (1 - a * 0.5);
-      p.vx *= 0.965;
       p.ch = smokeGlyph(a);
-      put(g, p.x, p.y, p.ch);
-      if (a < 0.45) put(g, p.x + (p.age % 2 === 0 ? 1 : -1), p.y + (p.age % 3 === 0 ? 1 : 0), p.ch);
+      const spread = Math.max(1, Math.round(p.size * 1.4));
+      for (let k = 0; k < spread; k++) {
+        if (k > 0 && rand() > 0.55) continue;
+        put(g, p.x + k * 0.5, p.y + (k % 2 === 0 ? 0 : 0.5), p.ch);
+      }
     }
 
-    blit(g, x, GROUND_ROW + bob, roll);
-    void step;
+    drawBarrier(g, rows, cols);
+    blit(g, spriteRows(pose.scale), pose.x, pose.base, pose.roll);
+    if (settled) void settled;
 
     frames.push(g.map((row) => row.join("").replace(/\s+$/, "")));
+    prev = pose;
   }
 
-  // The tail of the timeline is the parked car, so the hand-off to the hero is seamless.
-  frames.push(staticFrame(), staticFrame());
+  // Cut to ink while the last of the smoke is still on screen.
+  const black = "#".repeat(cols);
+  for (let i = 0; i < BLACK_FRAMES; i++) frames.push(Array.from({ length: rows }, () => black));
   return frames;
+}
+
+/** The still the page hero sits on: the car planted on the barrier line. */
+export function heroFrame(cfg: SceneConfig): Frame {
+  const { cols, rows } = cfg;
+  const g = blank(cols, rows);
+  drawBarrier(g, rows, cols);
+  const scale = clamp(Math.round(cols * 0.52), 30, 120);
+  blit(
+    g,
+    spriteRows(scale),
+    (cols - scale) / 2,
+    rows - BARRIER_ROWS - 0.5,
+    0.05,
+  );
+  return g.map((row) => row.join("").replace(/\s+$/, ""));
 }

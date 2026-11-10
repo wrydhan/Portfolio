@@ -1,65 +1,93 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
-import { buildFrames, staticFrame } from "@/lib/drift";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { buildFrames, heroFrame, FPS, type SceneConfig } from "@/lib/drift";
 
 type Props = {
-  /** play the drift; otherwise the car simply sits parked */
+  /** play the shot; otherwise dump the hero still */
   play?: boolean;
-  /** called once, on the last frame */
   onDone?: () => void;
-  fps?: number;
   className?: string;
+  /** character height in px; the grid is derived from the measured box */
+  maxChar?: number;
 };
 
+/** Grid for a measured box: chars sized so the frame fills it without wrapping. */
+function configFor(w: number, h: number, maxChar: number): SceneConfig {
+  const font = Math.max(4.5, Math.min(maxChar, w / 64, h / 22));
+  const cols = Math.max(40, Math.floor(w / (font * 0.6)));
+  const rows = Math.max(14, Math.floor(h / font));
+  return { cols, rows };
+}
+
 /**
- * The hero art: a car drifting through a character grid.
- *
- * The frames are computed by a pure function in `@/lib/drift` (no canvas, no
- * image asset, nothing fetched). Playback writes straight to the <pre>'s text
- * node, so seventy-odd frames cost one string assignment each instead of a
- * React render.
+ * The intro picture. Frames come out of a pure function in `@/lib/drift`; the
+ * player only swaps the text content of one <pre>, so a 60-frame shot costs a
+ * string assignment per frame and nothing else.
  */
-export function DriftArt({ play = false, onDone, fps = 30, className }: Props) {
+export function DriftArt({ play = false, onDone, className, maxChar = 21 }: Props) {
+  const boxRef = useRef<HTMLDivElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
-  const frames = useMemo(() => buildFrames(), []);
-  const parked = useMemo(() => staticFrame(), []);
+  const [cfg, setCfg] = useState<SceneConfig>({ cols: 116, rows: 30 });
+
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) setCfg(configFor(r.width, r.height, maxChar));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [maxChar]);
+
+  const frames = useMemo(() => buildFrames(cfg), [cfg]);
+  const still = useMemo(() => heroFrame(cfg), [cfg]);
 
   useEffect(() => {
     const pre = preRef.current;
-    if (!play || !pre) return;
-
+    if (!pre) return;
+    if (!play) {
+      pre.textContent = still.join("\n");
+      return;
+    }
     let raf = 0;
     let started: number | null = null;
     let shown = -1;
-
     const tick = (now: number) => {
       if (started === null) started = now;
-      const index = Math.min(frames.length - 1, Math.floor(((now - started) / 1000) * fps));
-      if (index !== shown) {
-        pre.textContent = frames[index].join("\n");
-        shown = index;
+      const i = Math.min(frames.length - 1, Math.floor(((now - started) / 1000) * FPS));
+      if (i !== shown) {
+        pre.textContent = frames[i].join("\n");
+        shown = i;
       }
-      if (index >= frames.length - 1) {
+      if (i >= frames.length - 1) {
         onDone?.();
         return;
       }
       raf = requestAnimationFrame(tick);
     };
-
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [play, fps, frames, onDone]);
+  }, [play, frames, still, onDone]);
+
+  const font = cfg.cols > 0 ? undefined : undefined;
 
   return (
-    <div className={`flex w-full justify-center overflow-hidden ${className ?? ""}`} aria-hidden="true">
+    <div ref={boxRef} className={`flex items-center justify-center overflow-hidden ${className ?? ""}`}>
       <pre
         ref={preRef}
-        className="ascii select-none"
-        style={{ fontSize: "clamp(3.6px, 2.05vw, 23px)" }}
+        className="ascii drift-stage select-none"
+        aria-hidden="true"
+        style={{ fontSize: `calc(min(100vw / ${cfg.cols}, 100vh / ${cfg.rows}) / 0.6)` }}
       >
-        {(play ? frames[0] : parked).join("\n")}
+        {(play ? frames[0] : still).join("\n")}
       </pre>
+      <span className="sr-only">
+        A white Toyota MR2 sliding through a corner, tyre smoke pouring off the driven wheel.
+      </span>
     </div>
   );
 }

@@ -123,69 +123,15 @@ body {
   transform: none;
 }
 
+/* ---- Intro ---- */
+@keyframes intro-wipe { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 -20% 0); } }
+@keyframes intro-fade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes intro-lift { from { transform: translateY(0); } to { transform: translateY(-100%); } }
 
-/* ---- Intro: the drift, then the name, then the page becomes scrollable ---- */
-
-@keyframes intro-wipe {
-  from {
-    clip-path: inset(0 0 100% 0);
-  }
-  to {
-    clip-path: inset(0 0 -20% 0);
-  }
-}
-
-@keyframes intro-fade {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.intro-wipe {
-  animation: intro-wipe 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.intro-fade {
-  animation: intro-fade 640ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-/* The overlay lifts and fades; the hero underneath is the same picture. */
-.intro-leaving {
-  opacity: 0;
-  transform: translateY(-1.5%);
-  transition:
-    opacity 360ms ease-out,
-    transform 480ms cubic-bezier(0.16, 1, 0.3, 1);
-  pointer-events: none;
-}
-
-/* Already played in this tab: the document carries this attribute before paint. */
-html[data-intro="seen"] [data-intro-root] {
-  display: none;
-}
+.intro-wipe { animation: intro-wipe 900ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.intro-fade { animation: intro-fade 700ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.intro-cut { animation: intro-lift 520ms cubic-bezier(0.76, 0, 0.24, 1) 1.9s both; }
 
 @media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-  [data-intro-root] {
-    display: none;
-  }
-  .reveal {
-    opacity: 1;
-    transform: none;
-    transition: none;
-  }
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-  }
+  .intro-wipe, .intro-fade, .intro-cut { animation: none; }
 }
