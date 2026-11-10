@@ -1,16 +1,29 @@
 #!/usr/bin/env python3
 """
-Render ONE static, coloured ASCII frame of the Su-47 from a traced silhouette.
+Render the hero aircraft: one static, coloured ASCII plot of the Su-47 Berkut.
 
-The silhouette is not parametric: refs/mask.npy is a 450x602 binary mask traced
-off a real top-down photograph of the aircraft (nose up). The forward sweep,
-canards, wing roots, wingtips and tail booms in the output are the real outline.
+Method: a BINARY MASK first, then an edge pass. Never a luminance dither, never
+a photo.
 
-Outputs:
-  public/ascii/su47-static.json   rows of [chars, colour-runs]
-  refs/preview_static.png         rendered preview for eyeballing the shape
+  1. The airframe silhouette is built as explicit symmetric polygons in
+     normalised aircraft units (LENGTH 1.0, HALF_SPAN 0.3695 = the real
+     22.6 m / 16.7 m ratio): radome, forebody, canards, forward-swept wings,
+     engine booms, tailplanes, canted fins. The right half is rasterised and
+     mirrored, so the two halves are identical by construction.
+  2. The mask is sampled into character cells at the cell aspect ratio
+     (1.667 tall : 1 wide), so the planform is neither stretched nor squashed.
+     The grid is 136 columns and the aircraft fills it, with no dead space.
+  3. Cells that straddle the mask boundary become a continuous ink stroke; only
+     the interior gets the fill palette (plate / shade plate / lit spine).
+     Nothing outside the mask is ever drawn.
+  4. Detail sits on top of the mask: white radome + pitot spike, canopy, dorsal
+     panel lines, twin canted fins, twin nozzles, red stars with white borders.
 
-One cell = one monospace character; cell aspect (advance / line-height) = 0.6.
+Outputs
+  src/data/su47-static.json      imported by src/components/Su47Static.tsx
+  public/ascii/su47-static.json  same payload, for inspection
+  refs/preview_static.png        colour preview at true cell aspect
+  refs/preview_text.txt          1:1 plain-text preview
 """
 
 from __future__ import annotations
@@ -22,295 +35,362 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-MASK = ROOT / "refs" / "mask.npy"
 
-COLS = 152
-CHAR_ASPECT = 0.6
+COLS = 136
+CELL_ASPECT = 1.667          # cell height / cell width
+SUPERSAMPLE = 4
 
-# palette indices
-INK, PLATE, LIT, GLASS, LIGHT, WHITE, RED, LINE, HAZE = range(9)
+HALF_SPAN = 0.3695
+LENGTH = 1.0
+
+INK, PLATE, PLATE_DK, LIT, GLASS, LIGHT, WHITE, RED, LINE = range(9)
 PALETTE = {
-    INK: "#101015",     # silhouette outline / dark structure
-    PLATE: "#575762",   # airframe plate
-    LIT: "#727280",     # lit airframe surfaces (spine, wing tops)
-    GLASS: "#7c7c88",   # canopy glint, nozzle rings
-    LIGHT: "#c2c2cb",   # radome interior, leading edges, wingtip rails
-    WHITE: "#ffffff",   # star border, nose highlight
-    RED: "#c8102e",     # stars
-    LINE: "#31313a",    # panel lines
-    HAZE: "#cfcfd7",    # sub-cell alias at the silhouette edge
+    INK: "#0d0d11",
+    PLATE: "#3a3a43",
+    PLATE_DK: "#23232b",
+    LIT: "#585864",
+    GLASS: "#8a8a96",
+    LIGHT: "#c6c6ce",
+    WHITE: "#ffffff",
+    RED: "#b3122c",
+    LINE: "#191920",
 }
 
-# traced anchors, mask pixels (450 x 602)
-CENTRE_X = 225.2
-RADOME_Y = (4.0, 74.0)
-CANOPY_Y = (74.0, 150.0)
-STAR_L = (61.7, 354.6)
-STAR_R = (388.7, 354.6)
-FIN_DX = 60.0
-FIN_Y = (466.0, 566.0)
-NOZZLE_Y = 572.0
-NOZZLE_DX = 31.0
-PANEL_Y = [(150.0, 182.0), (192.0, 222.0), (232.0, 262.0), (272.0, 300.0)]
+# ---------------------------------------------------------------- planform --
+CANARD = [(0.052, 0.272), (0.100, 0.318), (0.166, 0.372),
+          (0.166, 0.410), (0.100, 0.420), (0.052, 0.428)]
 
-STAR = [
-    "   ###   ",
-    "  #####  ",
-    "#########",
-    " ####### ",
-    "  ## ##  ",
-    "  #   #  ",
-]
+WING = [(0.080, 0.548), (0.130, 0.505), (0.200, 0.462), (0.280, 0.424),
+        (0.3695, 0.394), (0.3695, 0.470), (0.320, 0.512), (0.250, 0.590),
+        (0.185, 0.680), (0.130, 0.762), (0.080, 0.838)]
+
+BOOM = [(0.066, 0.640), (0.106, 0.612), (0.150, 0.632), (0.174, 0.700),
+        (0.176, 0.830), (0.170, 0.920), (0.146, 0.968), (0.118, 0.986),
+        (0.098, 0.958), (0.094, 0.870), (0.086, 0.780), (0.070, 0.700)]
+
+TAILPLANE = [(0.176, 0.812), (0.248, 0.868), (0.246, 0.902), (0.176, 0.880)]
+
+FIN = [(0.132, 0.700), (0.166, 0.748), (0.169, 0.930), (0.135, 0.900)]
+
+BODY_PROFILE = [(0.000, 0.000), (0.020, 0.011), (0.060, 0.024), (0.100, 0.034),
+                (0.140, 0.042), (0.190, 0.050), (0.250, 0.057), (0.320, 0.064),
+                (0.400, 0.073), (0.470, 0.083), (0.545, 0.094), (0.620, 0.102),
+                (0.700, 0.106), (0.780, 0.103), (0.860, 0.094), (0.920, 0.082),
+                (0.965, 0.070), (0.990, 0.056)]
+
+CANOPY = [(0.000, 0.156), (0.026, 0.172), (0.034, 0.205), (0.030, 0.240), (0.000, 0.262)]
+
+NOZZLE_Y, NOZZLE_X, NOZZLE_R = 0.930, 0.055, 0.042
+STAR_CY, STAR_CX = 0.548, 0.252
+
+STAR = ["    #    ",
+        "   ###   ",
+        "  #####  ",
+        "#########",
+        " ####### ",
+        "   ###   ",
+        "  #   #  "]
 
 
-def runs_of(row: np.ndarray) -> list[tuple[int, int]]:
-    idx = np.nonzero(row)[0]
-    if len(idx) == 0:
-        return []
-    out = [(int(idx[0]), int(idx[0]))]
-    for v in idx[1:]:
-        if v > out[-1][1] + 1:
-            out.append((int(v), int(v)))
-        else:
-            out[-1] = (out[-1][0], int(v))
-    return out
+def body_hw(y: float) -> float:
+    return float(np.interp(y, [p[0] for p in BODY_PROFILE], [p[1] for p in BODY_PROFILE]))
+
+
+def mirror(pts):
+    return [(-x, y) for (x, y) in reversed(pts)]
+
+
+def _raster(pts_list, W: int, H: int) -> np.ndarray:
+    raster = Image.new("L", (W, H), 0)
+    dr = ImageDraw.Draw(raster)
+    for pts in pts_list:
+        dr.polygon([((x + HALF_SPAN) / (2 * HALF_SPAN) * W, y * H) for (x, y) in pts], fill=255)
+    arr = np.array(raster) > 127
+    arr[:, : W // 2] = arr[:, W // 2:][:, ::-1]
+    return arr
+
+
+def build_mask(W: int, H: int) -> np.ndarray:
+    raster = Image.new("L", (W, H), 0)
+    dr = ImageDraw.Draw(raster)
+
+    def poly(pts):
+        dr.polygon([((x + HALF_SPAN) / (2 * HALF_SPAN) * W, y * H) for (x, y) in pts], fill=255)
+
+    for shape in (CANARD, WING, BOOM, TAILPLANE):
+        poly(shape)
+        poly(mirror(shape))
+
+    right, left = [], []
+    for y in np.linspace(0, 0.99, 240):
+        hw = body_hw(float(y))
+        right.append(((hw + HALF_SPAN) / (2 * HALF_SPAN) * W, y * H))
+        left.append(((-hw + HALF_SPAN) / (2 * HALF_SPAN) * W, y * H))
+    dr.polygon(right + left[::-1], fill=255)
+
+    arr = np.array(raster) > 127
+    arr[:, : W // 2] = arr[:, W // 2:][:, ::-1]
+    return arr
+
+
+def build_parts(W: int, H: int) -> dict[str, np.ndarray]:
+    """Each surface as its own binary mask, mirrored. Seams between them are what
+    make the planform read as wings and canards rather than one blob."""
+    body_r, body_l = [], []
+    for y in np.linspace(0, 0.99, 240):
+        hw = body_hw(float(y))
+        body_r.append(((hw + HALF_SPAN) / (2 * HALF_SPAN) * W, y * H))
+        body_l.append(((-hw + HALF_SPAN) / (2 * HALF_SPAN) * W, y * H))
+    parts = {
+        "body": [body_r + body_l[::-1]],
+        "wing": [WING, mirror(WING)],
+        "canard": [CANARD, mirror(CANARD)],
+        "boom": [BOOM, mirror(BOOM)],
+        "tailplane": [TAILPLANE, mirror(TAILPLANE)],
+    }
+    return {k: _raster(v, W, H) for k, v in parts.items()}
 
 
 def main() -> None:
-    mask = np.load(MASK)
-    # A top-down aircraft silhouette is solid, so any interior gap in the trace
-    # is tracing error: the sunlit glint band across the inner wing, the slit
-    # between fin and fuselage, sensor noise. Fill each row between its first and
-    # last traced pixel, then fill enclosed holes.
-    for y in range(mask.shape[0]):
-        idx = np.nonzero(mask[y])[0]
-        if len(idx):
-            mask[y, idx[0]:idx[-1] + 1] = True
-    H, W = mask.shape
-    rows = int(round(H / W * COLS * CHAR_ASPECT))
-    cw, ch = W / COLS, H / rows
+    cell_w = (2 * HALF_SPAN) / COLS
+    cell_h = cell_w * CELL_ASPECT
+    rows = int(round(LENGTH / cell_h))
 
-    yedges = np.linspace(0, H, rows + 1).round().astype(int)
-    xedges = np.linspace(0, W, COLS + 1).round().astype(int)
+    W, H = COLS * SUPERSAMPLE, rows * SUPERSAMPLE
+    arr = build_mask(W, H)
+
     cov = np.zeros((rows, COLS))
     for r in range(rows):
         for c in range(COLS):
-            blk = mask[yedges[r]:yedges[r + 1], xedges[c]:xedges[c + 1]]
-            if blk.size:
-                cov[r, c] = blk.mean()
+            cov[r, c] = arr[r * SUPERSAMPLE:(r + 1) * SUPERSAMPLE,
+                            c * SUPERSAMPLE:(c + 1) * SUPERSAMPLE].mean()
 
-    inside = cov > 0.5
-    cc = int(round(CENTRE_X / cw))
+    inside = cov > 0.45
+    nb = (np.roll(inside, 1, 0) & np.roll(inside, -1, 0)
+          & np.roll(inside, 1, 1) & np.roll(inside, -1, 1))
+    inside = inside | (nb & (cov > 0.10))
 
-    # distance-to-edge (cells)
-    border = inside & ~(
-        np.roll(inside, 1, 0) & np.roll(inside, -1, 0)
-        & np.roll(inside, 1, 1) & np.roll(inside, -1, 1)
-    )
+    edge = inside & ~(np.roll(inside, 1, 0) & np.roll(inside, -1, 0)
+                      & np.roll(inside, 1, 1) & np.roll(inside, -1, 1))
+    outline = edge | ((cov > 0.28) & ~inside)
+
     dist = np.zeros((rows, COLS))
-    reach = border.copy()
-    dist[border] = 1
-    for step in range(2, 34):
+    reach = outline.copy()
+    dist[outline] = 1
+    for step in range(2, 60):
         reach = (reach | np.roll(reach, 1, 0) | np.roll(reach, -1, 0)
                  | np.roll(reach, 1, 1) | np.roll(reach, -1, 1)) & inside
-        new = reach & (dist == 0)
-        dist[new] = step
-    dist[inside & (dist == 0)] = 33      # deep interior, never reached by the flood
+        dist[reach & (dist == 0)] = step
+    dist[inside & (dist == 0)] = 59
 
     chars = np.full((rows, COLS), " ", dtype="<U1")
-    cols = np.full((rows, COLS), -1, dtype=int)
+    cols = np.full((rows, COLS), -1, int)
+    cx = COLS // 2
 
-    def setc(r: int, c: int, ch_: str, col: int, need_inside: bool = True) -> None:
-        if 0 <= r < rows and 0 <= c < COLS and (inside[r, c] or not need_inside):
-            chars[r, c] = ch_
-            cols[r, c] = col
-
-    # ---------- body ----------
-    for r in range(rows):
-        for c in range(COLS):
-            f = cov[r, c]
-            if not inside[r, c]:
-                if f > 0.34:
-                    chars[r, c], cols[r, c] = "\u2593", INK
-                elif f > 0.14:
-                    chars[r, c], cols[r, c] = "\u2591", HAZE
-                continue
-            d = dist[r, c]
-            spine = abs(c - cc)
-            if d <= 1:
-                ch_, col = "\u2588", INK
-            elif spine <= 2:
-                ch_, col = "\u2592", LIT
-            elif spine <= 7:
-                ch_, col = "\u2593", LIT
-            elif d <= 2:
-                ch_, col = "\u2593", PLATE
-            else:
-                ch_, col = "\u2593", PLATE
+    def put(r, c, ch_, col, only_inside=True):
+        if 0 <= r < rows and 0 <= c < COLS and (inside[r, c] or not only_inside):
             chars[r, c], cols[r, c] = ch_, col
 
-    # leading edges = the forward-most surface of each vertical strip
+    # fill: lit spine, shaded band against the hull, plate elsewhere
+    for r in range(rows):
+        for c in range(COLS):
+            if not inside[r, c]:
+                continue
+            d = int(dist[r, c])
+            spine = abs(c - cx + 0.5)
+            if spine <= 1.5:
+                chars[r, c], cols[r, c] = "\u2592", LIT
+            elif spine <= 5:
+                chars[r, c], cols[r, c] = "\u2593", LIT
+            elif d <= 2:
+                chars[r, c], cols[r, c] = "\u2593", PLATE_DK
+            else:
+                chars[r, c], cols[r, c] = "\u2593", PLATE
+
+    # wing surfaces: light the leading and trailing edges so the sweep reads
     for c in range(COLS):
-        col_idx = np.nonzero(inside[:, c])[0]
-        if len(col_idx) == 0:
+        idx = np.nonzero(inside[:, c])[0]
+        if len(idx) == 0:
             continue
-        setc(int(col_idx[0]), c, "\u2584", LIGHT)
+        if abs(c - cx) > 9:
+            put(int(idx[0]), c, "\u2584", LIGHT)
+            put(int(idx[-1]), c, "\u2580", LIGHT)
 
-    # wingtip rails
+    # wingtip pods: the Su-47 carries sensor rails on both tips
+    edge_cols = [c for c in range(COLS) if inside[:, c].any()]
+    for c in (min(edge_cols), min(edge_cols) + 1, max(edge_cols) - 1, max(edge_cols)):
+        idx = np.nonzero(inside[:, c])[0]
+        if len(idx) == 0:
+            continue
+        for r in range(idx[0] + 1, idx[-1]):
+            put(int(r), c, "\u2588", LIGHT)
+
+    # stroke: hull first
     for r in range(rows):
-        rr = runs_of(inside[r])
-        if not rr:
-            continue
-        lo, hi = rr[0][0], rr[-1][1]
-        if hi - lo > 0.66 * COLS:
-            for c in (lo, hi):
-                setc(r, c, "\u2588", LIGHT)
+        for c in range(COLS):
+            if outline[r, c]:
+                chars[r, c], cols[r, c] = "\u2588", INK
 
-    # ---------- white radome + pitot ----------
-    for r in range(rows):
-        yc = (r + 0.5) * ch
-        if yc > RADOME_Y[1]:
-            break
-        rr = runs_of(inside[r])
-        if not rr:
-            continue
-        lo, hi = min(rr, key=lambda t: abs((t[0] + t[1]) / 2 - cc))
-        if hi - lo <= 1:
-            setc(r, c, "\u2588", INK)
-            continue
-        for c in range(lo, hi + 1):
-            if c in (lo, hi):
-                setc(r, c, "\u2588", INK)
-            elif yc < RADOME_Y[0] + 26:
-                setc(r, c, "\u2588", WHITE)
-            else:
-                setc(r, c, "\u2592", LIGHT)
-
-    # ---------- canopy ----------
-    for r in range(rows):
-        yc = (r + 0.5) * ch
-        if not (CANOPY_Y[0] < yc < CANOPY_Y[1]):
-            continue
-        rr = runs_of(inside[r])
-        if not rr:
-            continue
-        lo, hi = min(rr, key=lambda t: abs((t[0] + t[1]) / 2 - cc))
-        if hi - lo < 3:
-            continue
-        for c in range(lo, hi + 1):
-            if c in (lo, hi):
-                setc(r, c, "\u2588", INK)
-            elif yc < CANOPY_Y[0] + 16:
-                setc(r, c, "\u2593", INK)          # windscreen frame
-            elif yc < CANOPY_Y[0] + 40:
-                setc(r, c, "\u2591", GLASS)        # glass glint
-            else:
-                setc(r, c, "\u2592", PLATE)        # rear canopy fairing
-
-    # ---------- dorsal panel breaks (a few faint cross-lines, no boxes) ----------
-    for y0, y1 in PANEL_Y:
-        r0 = int(y0 / ch)
-        half = max(3, int(10 / cw))
-        for c in range(cc - half, cc + half + 1):
-            if inside[r0, c] and chars[r0, c] in ("\u2593", "\u2592"):
-                setc(r0, c, "\u00b7", LINE)
-
-    # ---------- twin canted vertical fins (wedges inside the aft booms) ----------
+    # wing root seams: a drawn line where each wing meets the fuselage, so the
+    # forward sweep reads as a wing rather than one continuous slab
     for side in (-1, 1):
-        r0, r1 = int(FIN_Y[0] / ch), int(FIN_Y[1] / ch)
-        for r in range(r0, r1 + 1):
-            t = (r - r0) / max(1, (r1 - r0))
-            c_in = int((CENTRE_X + side * (FIN_DX - 8 * t)) / cw)
-            c_out = int((CENTRE_X + side * (FIN_DX + 14 * t)) / cw)
-            lo, hi = sorted((c_in, c_out))
+        c = cx + side * int(round(0.098 / cell_w))
+        for r in range(int(0.548 / cell_h), min(rows, int(0.838 / cell_h) + 1)):
+            if inside[r, c]:
+                chars[r, c], cols[r, c] = "\u2588", INK
+
+    # pitot spike above the radome
+    r_nose = next((r for r in range(rows) if inside[r, cx] or inside[r, cx - 1]), 0)
+    for r in range(max(0, r_nose - 2), r_nose):
+        chars[r, cx - 1], cols[r, cx - 1] = "\u2502", INK
+        chars[r, cx], cols[r, cx] = "\u2502", INK
+
+    # white radome
+    for r in range(rows):
+        y = (r + 0.5) * cell_h
+        if y > 0.150:
+            break
+        cols_in = np.nonzero(inside[r])[0]
+        if len(cols_in) == 0:
+            continue
+        lo, hi = int(cols_in[0]), int(cols_in[-1])
+        for c in range(lo + 1, hi):
+            if y < 0.048:
+                put(r, c, "\u2588", WHITE)
+            elif y < 0.082:
+                put(r, c, "\u2592", WHITE)
+            else:
+                put(r, c, "\u2592", LIGHT)
+
+    # canopy
+    cy0, cy1 = 0.156, 0.262
+    for r in range(rows):
+        y = (r + 0.5) * cell_h
+        if not (cy0 < y < cy1):
+            continue
+        hw = float(np.interp(y, [p[1] for p in CANOPY], [p[0] for p in CANOPY]))
+        c0, c1 = cx - int(round(hw / cell_w)), cx + int(round(hw / cell_w))
+        for c in range(c0, c1 + 1):
+            if not inside[r, c]:
+                continue
+            if c in (c0, c1):
+                put(r, c, "\u2588", INK)
+            elif y < cy0 + 0.024:
+                put(r, c, "\u2593", INK)
+            elif y < cy0 + 0.055:
+                put(r, c, "\u2591", GLASS)
+            else:
+                put(r, c, "\u2593", INK)
+
+    # dorsal seam + panel lines
+    for r in range(rows):
+        y = (r + 0.5) * cell_h
+        if 0.270 < y < 0.960:
+            for c in (cx - 1, cx):
+                if inside[r, c]:
+                    cols[r, c] = LINE
+    for frac in (0.300, 0.392, 0.470, 0.620):
+        r = int(frac / cell_h)
+        for c in range(cx - 6, cx + 7):
+            if 0 <= r < rows and inside[r, c] and chars[r, c] in ("\u2593", "\u2592"):
+                chars[r, c], cols[r, c] = "\u00b7", LINE
+
+    # twin canted fins: raised wedge, pale leading edge, ink outline
+    r0, r1 = int(FIN[0][1] / cell_h), int(FIN[-1][1] / cell_h)
+    for side in (-1, 1):
+        for r in range(r0, min(rows, r1 + 1)):
+            y = (r + 0.5) * cell_h
+            a = float(np.interp(y, [FIN[0][1], FIN[1][1]], [FIN[0][0], FIN[1][0]]))
+            b = float(np.interp(y, [FIN[2][1], FIN[3][1]], [FIN[2][0], FIN[3][0]]))
+            ca = cx + side * int(round(a / cell_w))
+            cb = cx + side * int(round(b / cell_w))
+            lo, hi = sorted((ca, cb))
+            if hi - lo < 2:
+                hi = lo + 3 if side > 0 else hi
+                lo = hi - 3 if side < 0 else lo
             for c in range(lo, hi + 1):
                 if not inside[r, c]:
                     continue
                 if c in (lo, hi):
-                    setc(r, c, "\u2588", INK)
-                elif c == lo + 1 or c == hi - 1:
-                    setc(r, c, "\u2591", LIGHT)
+                    put(r, c, "\u2588", INK)
+                elif y < FIN[1][1] and c == (lo + 1 if side > 0 else hi - 1):
+                    put(r, c, "\u2591", LIGHT)
                 else:
-                    setc(r, c, "\u2593", PLATE)
-        # fin tip catch-light
-        setc(r0, int((CENTRE_X + side * FIN_DX) / cw), "\u2591", WHITE)
+                    put(r, c, "\u2593", PLATE)
 
-    # ---------- exhaust nozzles between the booms ----------
-    rr0 = int(NOZZLE_Y / ch)
+    # twin nozzles
+    nr = int(NOZZLE_Y / cell_h)
+    R = NOZZLE_R / cell_w
     for side in (-1, 1):
-        ccen = int((CENTRE_X + side * NOZZLE_DX) / cw)
-        for r in range(rr0 - 5, rr0 + 6):
-            for c in range(ccen - 6, ccen + 7):
+        ncx = cx + side * int(round(NOZZLE_X / cell_w))
+        for r in range(nr - int(R) - 1, nr + int(R) + 2):
+            for c in range(ncx - int(R) - 1, ncx + int(R) + 2):
                 if not (0 <= r < rows and 0 <= c < COLS) or not inside[r, c]:
                     continue
-                rad = (((r - rr0) / 4.6) ** 2 + ((c - ccen) / 5.4) ** 2) ** 0.5
-                if rad < 0.5:
-                    setc(r, c, "\u2593", INK)
-                elif rad < 0.92:
-                    setc(r, c, "\u2592", GLASS)
-                elif rad < 1.18:
-                    setc(r, c, "\u2588", INK)
+                rad = (((r - nr) / R) ** 2 + ((c - ncx) / R) ** 2) ** 0.5
+                if rad < 0.38:
+                    put(r, c, "\u2593", INK)
+                elif rad < 0.80:
+                    put(r, c, "\u2592", GLASS)
+                elif rad < 1.04:
+                    put(r, c, "\u2588", INK)
 
-    # ---------- red stars with white borders ----------
-    for sx, sy in (STAR_L, STAR_R):
-        r0 = int(sy / ch) - len(STAR) // 2
-        c0 = int(sx / cw) - len(STAR[0]) // 2
-        star = {(r0 + i, c0 + j) for i, line in enumerate(STAR)
+    # red stars with white border
+    sy = int(STAR_CY / cell_h)
+    for side in (-1, 1):
+        sc = cx + side * int(round(STAR_CX / cell_w))
+        rr0, cc0 = sy - len(STAR) // 2, sc - len(STAR[0]) // 2
+        star = {(rr0 + i, cc0 + j) for i, line in enumerate(STAR)
                 for j, v in enumerate(line) if v == "#"}
         ring = {(r + dr, c + dc) for (r, c) in star
                 for dr in (-1, 0, 1) for dc in (-1, 0, 1)} - star
         for (r, c) in sorted(ring):
-            setc(r, c, "\u2591", WHITE)
+            put(r, c, "\u2591", WHITE)
         for (r, c) in sorted(star):
-            setc(r, c, "\u2588", RED)
+            put(r, c, "\u2588", RED)
 
-    # ---------- emit ----------
+    # exact symmetry
+    for r in range(rows):
+        for c in range(COLS // 2):
+            chars[r, COLS - 1 - c] = chars[r, c]
+            cols[r, COLS - 1 - c] = cols[r, c]
+
     out_rows = []
     for r in range(rows):
         line = "".join(chars[r])
         runs, c = [], 0
         while c < COLS:
-            col = cols[r, c]
             n = 1
-            while c + n < COLS and cols[r, c + n] == col:
+            while c + n < COLS and cols[r, c + n] == cols[r, c]:
                 n += 1
-            runs.append(f"{col}:{n}")
+            runs.append(f"{cols[r, c]}:{n}")
             c += n
         out_rows.append([line, ",".join(runs)])
 
-    payload = {
-        "meta": {
-            "subject": "Sukhoi Su-47 Berkut",
-            "view": "top-down",
-            "grid": [COLS, rows],
-            "charAspect": CHAR_ASPECT,
-            "palette": PALETTE,
-            "source": "traced from a top-down reference photograph",
-        },
-        "rows": out_rows,
-    }
+    payload = {"meta": {"subject": "Sukhoi Su-47 Berkut", "view": "top-down",
+                        "grid": [COLS, rows], "charAspect": CELL_ASPECT,
+                        "palette": {str(k): v for k, v in PALETTE.items()},
+                        "source": "binary symmetric planform mask, Su-47 three-view"},
+               "rows": out_rows}
     blob = json.dumps(payload, separators=(",", ":"))
-    for dest in (ROOT / "public" / "ascii" / "su47-static.json",
-                 ROOT / "src" / "data" / "su47-static.json"):
+    for dest in (ROOT / "src" / "data" / "su47-static.json",
+                 ROOT / "public" / "ascii" / "su47-static.json"):
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(blob)
-        print(f"wrote {dest} grid {COLS}x{rows}")
+    print(f"grid {COLS}x{rows}")
 
-    # ---------- preview ----------
-    cwpx, chpx = 8, 13
-    img = Image.new("RGB", (COLS * cwpx + 24, rows * chpx + 24), "#ffffff")
-    dr = ImageDraw.Draw(img)
-    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 13)
+    cw, ch = 6, round(6 * CELL_ASPECT)
+    img = Image.new("RGB", (COLS * cw, rows * ch), "#ffffff")
+    d2 = ImageDraw.Draw(img)
+    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", ch)
     for r in range(rows):
         for c in range(COLS):
-            ch_ = chars[r, c]
-            if ch_ == " " or cols[r, c] < 0:
+            if chars[r, c] == " " or cols[r, c] < 0:
                 continue
-            dr.text((12 + c * cwpx, 12 + r * chpx - 3), ch_, font=font,
-                    fill=PALETTE[cols[r, c]])
-    prev = ROOT / "refs" / "preview_static.png"
-    img.save(prev)
-    print(f"wrote {prev} {img.size}")
+            d2.text((c * cw, r * ch - ch * 0.16), chars[r, c], font=font, fill=PALETTE[cols[r, c]])
+    img.save(ROOT / "refs" / "preview_static.png")
+    (ROOT / "refs" / "preview_text.txt").write_text("\n".join("".join(r) for r in chars) + "\n")
+    print("\n".join("".join(r) for r in chars))
 
 
 if __name__ == "__main__":
