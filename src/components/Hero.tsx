@@ -11,7 +11,7 @@ export function Hero() {
           Fig. 01 <span className="text-ink">— Su-47 “Berkut”</span>
         </span>
         <span className="hidden text-center sm:block">
-          Static plot · one ink, no shading · 136&times;110 cells
+          Matté cut-out of the reference shot · ascii-magic · 150&times;125 cells
         </span>
         <span className="text-right">{siteConfig.location}</span>
       </div>

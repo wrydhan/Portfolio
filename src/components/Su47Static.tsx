@@ -1,53 +1,37 @@
 import payload from "@/data/su47-static.json";
 
 type Payload = {
-  meta: { grid: [number, number]; charAspect: number; palette: Record<string, string> };
-  rows: [string, string][];
+  meta: {
+    grid: [number, number];
+    charAspect: number;
+    ink: string;
+    source: string;
+    subject: string;
+    view: string;
+  };
+  rows: string[];
 };
 
 const data = payload as unknown as Payload;
 
 /**
- * The hero aircraft: one static, coloured ASCII plot of the Su-47, drawn from a
- * symmetric planform mask (see scripts/render-su47-static.py).
- *
- * Nothing animates here on purpose. The turntable route is kept in
- * Su47Ascii.tsx for later, but frames are not shipped until this plot is right.
+ * The hero aircraft: the Su-47 reference photograph with its background removed
+ * (an alpha matte from a segmentation model), cropped tight to the airframe and
+ * converted to characters. One ink on paper — no palette, no coloured fills.
+ * Regenerate with scripts/render-su47-static.py.
  */
 export function Su47Static({ className }: { className?: string }) {
-  const { palette } = data.meta;
-
   return (
     <div className={`relative select-none ${className ?? ""}`} aria-hidden="true">
       <pre
         className="ascii mx-auto"
-        style={{ fontSize: "clamp(3px, min(0.72vw, 0.52vh), 9px)", lineHeight: 1 }}
+        style={{
+          fontSize: "clamp(2.6px, min(0.63vw, 0.46vh), 8px)",
+          lineHeight: 1,
+          color: data.meta.ink,
+        }}
       >
-        {data.rows.map(([chars, runs], rowIndex) => {
-          const spans: React.ReactNode[] = [];
-          let cursor = 0;
-          for (const run of runs.split(",")) {
-            const [colourIndex, count] = run.split(":");
-            const length = Number(count) || 0;
-            const text = chars.slice(cursor, cursor + length);
-            cursor += length;
-            if (colourIndex === "-1" || text.trim() === "") {
-              spans.push(text);
-              continue;
-            }
-            spans.push(
-              <span key={`${rowIndex}-${cursor}`} style={{ color: palette[colourIndex] }}>
-                {text}
-              </span>,
-            );
-          }
-          return (
-            <span key={rowIndex}>
-              {spans}
-              {"\n"}
-            </span>
-          );
-        })}
+        {data.rows.join("\n")}
       </pre>
     </div>
   );
